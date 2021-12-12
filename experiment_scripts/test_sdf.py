@@ -42,8 +42,7 @@ model.cuda()
 root_path = os.path.join(opt.logging_root, opt.experiment_name)
 utils.cond_mkdir(root_path)
 
-num = 20
-codes = (list(range(num)))
+codes = (list(range(opt.num_class)))
 sdf_meshing.create_mesh_multi(model,
                               os.path.join(root_path, 'test'),
                               codes=codes,
