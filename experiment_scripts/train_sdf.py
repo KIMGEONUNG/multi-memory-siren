@@ -35,16 +35,26 @@ p.add_argument('--point_cloud_path', type=str, default='/home/sitzmann/data/poin
                help='Options are "sine" (all sine activations) and "mixed" (first layer sine, other layers tanh)')
 
 p.add_argument('--checkpoint_path', default=None, help='Checkpoint to trained model.')
+
+################### Check this option ##################
 p.add_argument('--dim_embd', type=int, default=7)
 p.add_argument('--num_class', type=int, default=20)
+p.add_argument('--dim_hidden', type=int, default=256)
+p.add_argument('--num_layer', type=int, default=3)
+########################################################
+
 opt = p.parse_args()
 
-
-sdf_dataset = dataio.PointCloud(opt.point_cloud_path, on_surface_points=opt.batch_size)
-dataloader = DataLoader(sdf_dataset, shuffle=True, batch_size=1, pin_memory=True, num_workers=0)
+sdf_dataset = dataio.PointCloud(opt.point_cloud_path,
+                                on_surface_points=opt.batch_size)
+dataloader = DataLoader(sdf_dataset, shuffle=True,
+                        batch_size=1, pin_memory=True, num_workers=0)
 
 # Define the model.
-model = modules.SDFDecoder(opt.num_class, opt.dim_embd)
+model = modules.SDFDecoder(opt.num_class,
+                           opt.dim_embd,
+                           opt.dim_hidden,
+                           opt.num_layer)
 model.cuda()
 
 # Define the loss

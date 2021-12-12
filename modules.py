@@ -8,11 +8,18 @@ import torch.nn.functional as F
 
 
 class SDFDecoder(torch.nn.Module):
-    def __init__(self, num_class: int, dim_embd: int):
+    def __init__(self, 
+                 num_class: int, 
+                 dim_embd: int,
+                 dim_hidden=256,
+                 num_layer=3):
         super().__init__()
         # Define the model.
         self.model = SingleBVPNet(type='sine',
-                final_layer_factor=1, in_features=3 + dim_embd)
+                final_layer_factor=1,
+                in_features=3 + dim_embd,
+                hidden_features=dim_hidden,
+                num_hidden_layers=num_layer)
         self.embd = nn.Embedding(num_class, dim_embd)
 
     # def forward(self, coords, c):
