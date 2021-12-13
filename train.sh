@@ -1,9 +1,9 @@
 source common.sh
 
 xyz=./xyzs
-size_batch=250000
+size_batch=100000
 
-rm logs/$name_exp -rfv
+#rm logs/$name_exp -rfv
 
 python experiment_scripts/train_sdf.py \
        --model_type=sine \

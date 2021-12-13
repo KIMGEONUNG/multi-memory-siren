@@ -3,7 +3,3 @@ dim_embd=17
 num_class=256 #56
 dim_hidden=512
 num_layer=3
-
-# FOR INTERPOLATION EXPERIMENT
-shape1=1
-shape2=3

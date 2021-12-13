@@ -32,6 +32,25 @@ class SDFDecoder(torch.nn.Module):
         model_in = {'coords': coords}
         return self.model(model_in)
 
+# when latent code is directly given instead of looking up in embedding
+class SDFDecoderInference(SDFDecoder):
+    def __init__(self,num_class: int, 
+                 dim_embd: int,
+                 dim_hidden=256,
+                 num_layer=3):
+        super().__init__(num_class,dim_embd,dim_hidden,num_layer)
+        
+
+    def forward(self,model_input,latent):
+        coords = model_input['coords']
+        #c = model_input['ids']
+        #c_embd = self.embd(c)
+        c_embd=latent#.repeat(len(coords),1)
+        #import pdb; pdb.set_trace()
+        coords = torch.cat([coords, c_embd], axis=-1)
+
+        model_in = {'coords': coords}
+        return self.model(model_in)
 
 
 class BatchLinear(nn.Linear, MetaModule):

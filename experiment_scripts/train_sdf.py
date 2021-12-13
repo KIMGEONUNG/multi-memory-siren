@@ -45,8 +45,8 @@ p.add_argument('--num_layer', type=int, default=3)
 
 opt = p.parse_args()
 
-sdf_dataset = dataio.PointCloud(opt.point_cloud_path,
-                                on_surface_points=opt.batch_size)
+sdf_dataset = dataio.PointCloudNecessaryLoad(opt.point_cloud_path,
+                                on_surface_points=opt.batch_size,num_class=opt.num_class)
 dataloader = DataLoader(sdf_dataset, shuffle=True,
                         batch_size=1, pin_memory=True, num_workers=0)
 
