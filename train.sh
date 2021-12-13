@@ -1,6 +1,7 @@
 source common.sh
 
-xyz=./xyzs_20000
+# xyz=./xyzs_10000
+xyz=./xyzs_old1
 size_batch=200000
 
 python experiment_scripts/train_sdf.py \

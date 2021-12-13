@@ -390,7 +390,7 @@ class WaveSource(Dataset):
         return {'coords': coords}, {'source_boundary_values': boundary_values, 'dirichlet_mask': dirichlet_mask,
                                     'squared_slowness': squared_slowness, 'squared_slowness_grid': squared_slowness_grid}
 
-class PointCloud_(Dataset):
+class PointCloudSingle(Dataset):
     def __init__(self, pointcloud_path, on_surface_points, keep_aspect_ratio=True):
         super().__init__()
 
@@ -429,10 +429,6 @@ class PointCloud_(Dataset):
 
         # Random coords
         rand_idcs = np.random.choice(point_cloud_size, size=self.on_surface_points)
-        ############################################
-        # print(rand_idcs)
-        # exit()
-        ############################################
 
         on_surface_coords = self.coords[rand_idcs, :]
         on_surface_normals = self.normals[rand_idcs, :]

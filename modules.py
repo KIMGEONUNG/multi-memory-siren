@@ -22,7 +22,6 @@ class SDFDecoder(torch.nn.Module):
                 num_hidden_layers=num_layer)
         self.embd = nn.Embedding(num_class, dim_embd)
 
-    # def forward(self, coords, c):
     def forward(self, model_input):
         coords = model_input['coords']
         c = model_input['ids']
@@ -32,6 +31,16 @@ class SDFDecoder(torch.nn.Module):
         model_in = {'coords': coords}
         return self.model(model_in)
 
+    def forward_with_code(self, coords, c_embd):
+        if len(coords.shape) == 2:
+            coords = coords.unsqueeze(0)
+
+        c_embd = c_embd.view(1, 1, -1)
+        c_embd = c_embd.expand(1, coords.shape[-2], c_embd.shape[-1])
+
+        coords = torch.cat([coords, c_embd], axis=-1)
+        model_in = {'coords': coords}
+        return self.model(model_in)
 
 
 class BatchLinear(nn.Linear, MetaModule):
@@ -65,8 +74,15 @@ class FCBlock(MetaModule):
     Can be used just as a normal neural network though, as well.
     '''
 
-    def __init__(self, in_features, out_features, num_hidden_layers, hidden_features,
-                 outermost_linear=False, nonlinearity='relu', weight_init=None):
+    def __init__(self, 
+                 in_features, 
+                 out_features, 
+                 num_hidden_layers,
+                 hidden_features,
+                 outermost_linear=False, 
+                 nonlinearity='relu', 
+                 weight_init=None,
+                 dropout=None):
         super().__init__()
 
         self.first_layer_init = None
@@ -146,24 +162,15 @@ class SingleBVPNet(MetaModule):
     '''A canonical representation network for a BVP.'''
 
     def __init__(self, out_features=1, type='sine', in_features=2,
-                 mode='mlp', hidden_features=256, num_hidden_layers=3, **kwargs):
+                 hidden_features=256, num_hidden_layers=3, **kwargs):
         super().__init__()
-        self.mode = mode
 
-        if self.mode == 'rbf':
-            self.rbf_layer = RBFLayer(in_features=in_features, out_features=kwargs.get('rbf_centers', 1024))
-            in_features = kwargs.get('rbf_centers', 1024)
-        elif self.mode == 'nerf':
-            self.positional_encoding = PosEncodingNeRF(in_features=in_features,
-                                                       sidelength=kwargs.get('sidelength', None),
-                                                       fn_samples=kwargs.get('fn_samples', None),
-                                                       use_nyquist=kwargs.get('use_nyquist', True))
-            in_features = self.positional_encoding.out_dim
-
-        self.image_downsampling = ImageDownsampling(sidelength=kwargs.get('sidelength', None),
-                                                    downsample=kwargs.get('downsample', False))
-        self.net = FCBlock(in_features=in_features, out_features=out_features, num_hidden_layers=num_hidden_layers,
-                           hidden_features=hidden_features, outermost_linear=True, nonlinearity=type)
+        self.net = FCBlock(in_features=in_features,
+                           out_features=out_features,
+                           num_hidden_layers=num_hidden_layers,
+                           hidden_features=hidden_features,
+                           outermost_linear=True,
+                           nonlinearity=type)
         print(self)
 
     def forward(self, model_input, params=None):
@@ -171,19 +178,9 @@ class SingleBVPNet(MetaModule):
             params = OrderedDict(self.named_parameters())
 
         # Enables us to compute gradients w.r.t. coordinates
-        coords_org = model_input['coords'].clone().detach().requires_grad_(True)
-        coords = coords_org
-
-        # various input processing methods for different applications
-        if self.image_downsampling.downsample:
-            coords = self.image_downsampling(coords)
-        if self.mode == 'rbf':
-            coords = self.rbf_layer(coords)
-        elif self.mode == 'nerf':
-            coords = self.positional_encoding(coords)
-
+        coords = model_input['coords']#.clone().detach().requires_grad_(True)
         output = self.net(coords, self.get_subdict(params, 'net'))
-        return {'model_in': coords_org, 'model_out': output}
+        return {'model_in': coords, 'model_out': output}
 
     def forward_with_activations(self, model_input):
         '''Returns not only model output, but also intermediate activations.'''
