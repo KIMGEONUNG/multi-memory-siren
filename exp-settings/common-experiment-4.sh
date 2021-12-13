@@ -1,5 +1,5 @@
-name_exp='experiment_3'
-description='latent code dimension 256'
+name_exp='experiment_4'
+description='latent code dimension 256 with code bound'
 dim_embd=256
 num_class=256 #56
 dim_hidden=512
