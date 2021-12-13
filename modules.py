@@ -12,15 +12,17 @@ class SDFDecoder(torch.nn.Module):
                  num_class: int, 
                  dim_embd: int,
                  dim_hidden=256,
-                 num_layer=3):
+                 num_layer=3,
+                 dropout=None):
         super().__init__()
         # Define the model.
         self.model = SingleBVPNet(type='sine',
-                final_layer_factor=1,
                 in_features=3 + dim_embd,
                 hidden_features=dim_hidden,
-                num_hidden_layers=num_layer)
-        self.embd = nn.Embedding(num_class, dim_embd)
+                num_hidden_layers=num_layer,
+                dropout=dropout)
+
+        self.embd = nn.Embedding(num_class, dim_embd, max_norm=1.0)
 
     def forward(self, model_input):
         coords = model_input['coords']
@@ -108,11 +110,16 @@ class FCBlock(MetaModule):
         self.net.append(MetaSequential(
             BatchLinear(in_features, hidden_features), nl
         ))
+        if dropout is not None:
+            self.net.append(nn.Dropout(dropout, True))
 
         for i in range(num_hidden_layers):
             self.net.append(MetaSequential(
                 BatchLinear(hidden_features, hidden_features), nl
             ))
+            if dropout is not None:
+                self.net.append(nn.Dropout(dropout, True))
+
 
         if outermost_linear:
             self.net.append(MetaSequential(BatchLinear(hidden_features, out_features)))
@@ -162,7 +169,7 @@ class SingleBVPNet(MetaModule):
     '''A canonical representation network for a BVP.'''
 
     def __init__(self, out_features=1, type='sine', in_features=2,
-                 hidden_features=256, num_hidden_layers=3, **kwargs):
+                 hidden_features=256, num_hidden_layers=3, dropout=None):
         super().__init__()
 
         self.net = FCBlock(in_features=in_features,
@@ -170,7 +177,9 @@ class SingleBVPNet(MetaModule):
                            num_hidden_layers=num_hidden_layers,
                            hidden_features=hidden_features,
                            outermost_linear=True,
-                           nonlinearity=type)
+                           nonlinearity=type,
+                           dropout=dropout)
+                        
         print(self)
 
     def forward(self, model_input, params=None):
@@ -206,40 +215,6 @@ class PINNet(nn.Module):
         coords = model_input['coords'].clone().detach().requires_grad_(True)
         output = self.net(coords)
         return {'model_in': coords, 'model_out': output}
-
-
-class ImageDownsampling(nn.Module):
-    '''Generate samples in u,v plane according to downsampling blur kernel'''
-
-    def __init__(self, sidelength, downsample=False):
-        super().__init__()
-        if isinstance(sidelength, int):
-            self.sidelength = (sidelength, sidelength)
-        else:
-            self.sidelength = sidelength
-
-        if self.sidelength is not None:
-            self.sidelength = torch.Tensor(self.sidelength).cuda().float()
-        else:
-            assert downsample is False
-        self.downsample = downsample
-
-    def forward(self, coords):
-        if self.downsample:
-            return coords + self.forward_bilinear(coords)
-        else:
-            return coords
-
-    def forward_box(self, coords):
-        return 2 * (torch.rand_like(coords) - 0.5) / self.sidelength
-
-    def forward_bilinear(self, coords):
-        Y = torch.sqrt(torch.rand_like(coords)) - 1
-        Z = 1 - torch.sqrt(torch.rand_like(coords))
-        b = torch.rand_like(coords) < 0.5
-
-        Q = (b * Y + ~b * Z) / self.sidelength
-        return Q
 
 
 class PosEncodingNeRF(nn.Module):

@@ -1,8 +1,9 @@
 source common.sh
 
-# xyz=./xyzs_10000
-xyz=./xyzs_old1
-size_batch=200000
+xyz=./xyzs_10000
+# xyz=./xyzs_old1
+size_batch=170000
+dropout=0.3
 
 python experiment_scripts/train_sdf.py \
        --model_type=sine \
@@ -12,4 +13,5 @@ python experiment_scripts/train_sdf.py \
        --dim_embd=$dim_embd \
        --num_class=$num_class \
        --dim_hidden=$dim_hidden \
-       --num_layer=$num_layer 
+       --num_layer=$num_layer \
+       --dropout=$dropout 
