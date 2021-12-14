@@ -38,6 +38,8 @@ p.add_argument('--checkpoint_path', default=None, help='Checkpoint to trained mo
 
 ################### Check this option ##################
 p.add_argument('--dim_embd', type=int, default=7)
+p.add_argument('--dim_embdc', type=int, default=None)
+p.add_argument('--c2_conditioned',type=bool, default=True)
 p.add_argument('--num_class', type=int, default=20)
 p.add_argument('--dim_hidden', type=int, default=256)
 p.add_argument('--num_layer', type=int, default=3)
@@ -48,13 +50,22 @@ p.add_argument('--clip_grad', default=False)
 opt = p.parse_args()
 
 sdf_dataset = dataio.PointCloudRGB(opt.point_cloud_path,
-                                on_surface_points=opt.batch_size)
+                                on_surface_points=opt.batch_size,num_class=opt.num_class)
 dataloader = DataLoader(sdf_dataset, shuffle=True,
                         batch_size=1, pin_memory=True, num_workers=0)
 
 # Define the model.
-model = modules.SDFCDecoder(opt.num_class,
+if opt.dim_embdc==None:
+    model = modules.SDFCDecoder(opt.num_class,
                            opt.dim_embd,
+                           opt.dim_hidden,
+                           opt.num_layer,
+                           opt.dropout)
+else:
+    model = modules.SDFC2Decoder(opt.num_class,
+                           opt.dim_embd,
+                           opt.dim_embdc,
+                           opt.c2_conditioned,
                            opt.dim_hidden,
                            opt.num_layer,
                            opt.dropout)
@@ -64,7 +75,8 @@ model.cuda()
 loss_fn = loss_functions.sdfc
 root_path = os.path.join(opt.logging_root, opt.experiment_name)
 
-training.train_sdfc(model=model,
+if opt.dim_embdc==None:
+    training.train_sdfc(model=model,
                train_dataloader=dataloader,
                epochs=opt.num_epochs,
                lr=opt.lr,
@@ -72,4 +84,17 @@ training.train_sdfc(model=model,
                epochs_til_checkpoint=opt.epochs_til_ckpt,
                model_dir=root_path,
                loss_fn=loss_fn,
+               clip_grad=opt.clip_grad)
+else:
+    loss_sdf=loss_functions.sdf
+    loss_rgb=loss_functions.rgb
+    training.train_sdfc2(model=model,
+               train_dataloader=dataloader,
+               epochs=opt.num_epochs,
+               lr=opt.lr,
+               steps_til_summary=opt.steps_til_summary,
+               epochs_til_checkpoint=opt.epochs_til_ckpt,
+               model_dir=root_path,
+               loss_shape=loss_sdf,
+               loss_color=loss_rgb,
                clip_grad=opt.clip_grad)

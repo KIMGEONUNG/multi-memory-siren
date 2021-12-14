@@ -212,8 +212,9 @@ def helmholtz_pml(model_output, gt):
 
 
 def color(x, gt):
-    x = x[..., :gt.shape[-2], :] 
-    loss = F.mse_loss(x, gt)
+    #import pdb; pdb.set_trace()
+    x_ = x[..., :gt.shape[-2], :] 
+    loss = F.mse_loss(x_, gt)
     return loss
 
 
@@ -228,6 +229,10 @@ def sdfc(model_output, gt):
     loss['rgb'] = loss_rgb 
     return loss
  
+def rgb(model_output, gt):
+    loss_rgb=color(model_output['model_out_rgb'],gt['rgbs'])
+
+    return {'rgb': loss_rgb.mean()}
 
 def sdf(model_output, gt):
     '''
@@ -238,11 +243,9 @@ def sdf(model_output, gt):
     gt_normals = gt['normals']
 
     coords = model_output['model_in']
-    # coords = model_output['model_in'][...,:3]
     pred_sdf = model_output['model_out']
 
-    # gradient = diff_operators.gradient(pred_sdf, coords)
-    gradient = diff_operators.gradient(pred_sdf, coords)[...,:3]
+    gradient = diff_operators.gradient(pred_sdf, coords)
 
     # Wherever boundary_values is not equal to zero, we interpret it as a boundary constraint.
     sdf_constraint = torch.where(gt_sdf != -1, pred_sdf, torch.zeros_like(pred_sdf))

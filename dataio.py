@@ -532,12 +532,12 @@ class PointCloudNecessaryLoad(Dataset):
 
 
 class PointCloudRGB(Dataset):
-    def __init__(self, pointcloud_path, on_surface_points, keep_aspect_ratio=True):
+    def __init__(self, pointcloud_path, on_surface_points, num_class=None,keep_aspect_ratio=True):
         super().__init__()
 
         paths = [join(pointcloud_path, p) for p in listdir(pointcloud_path)]
         paths.sort()
-        self.num_data = len(paths)
+        self.num_data = num_class #len(paths)
 
         # Make Coordinate
         coords_ls = []
@@ -547,6 +547,8 @@ class PointCloudRGB(Dataset):
 
         print('Load data ...')
         for i, path in enumerate(tqdm(paths)):
+            if num_class==i:
+                break
             point_cloud = np.genfromtxt(path)
 
             coords = point_cloud[:, :3]
