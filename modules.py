@@ -6,7 +6,8 @@ from collections import OrderedDict
 import math
 import torch.nn.functional as F
 
-class RGBDecoder(torch.nn.Module):
+
+class SDFCDecoder(torch.nn.Module):
     def __init__(self, 
                  num_class: int, 
                  dim_embd: int,
@@ -16,24 +17,39 @@ class RGBDecoder(torch.nn.Module):
         super().__init__()
 
         # Define the model.
-        self.model = SingleBVPNet(type='sine',
+        self.net_rgb = SingleBVPNet(type='sine',
                                   out_features=3,
                                   in_features=3 + dim_embd,
                                   hidden_features=dim_hidden,
                                   num_hidden_layers=num_layer,
-                                  dropout=dropout)
+                                  dropout=dropout,
+                                  use_pair_output=False)
+
+        self.net_sdf = SingleBVPNet(type='sine',
+                                  out_features=1,
+                                  in_features=3 + dim_embd,
+                                  hidden_features=dim_hidden,
+                                  num_hidden_layers=num_layer,
+                                  dropout=dropout,
+                                  use_pair_output=False)
         self.embd = nn.Embedding(num_class, dim_embd, max_norm=1.0)
 
     def forward(self, model_input):
         coords = model_input['coords']
         c = model_input['ids']
         c_embd = self.embd(c)
+
         coords = torch.cat([coords, c_embd], axis=-1)
 
         model_in = {'coords': coords}
-        return self.model(model_in)
+        sdf = self.net_sdf(model_in)
+        rgb = self.net_rgb(model_in)
+
+        return model_in, sdf, rgb
+
 
     def forward_with_code(self, coords, c_embd):
+        raise NotImplementedError()
         if len(coords.shape) == 2:
             coords = coords.unsqueeze(0)
 
@@ -42,7 +58,7 @@ class RGBDecoder(torch.nn.Module):
 
         coords = torch.cat([coords, c_embd], axis=-1)
         model_in = {'coords': coords}
-        return self.model(model_in)
+        return self.net_sdf(model_in)
 
 
 class SDFDecoder(torch.nn.Module):
@@ -207,8 +223,10 @@ class SingleBVPNet(MetaModule):
     '''A canonical representation network for a BVP.'''
 
     def __init__(self, out_features=1, type='sine', in_features=2,
-                 hidden_features=256, num_hidden_layers=3, dropout=None):
+                 hidden_features=256, num_hidden_layers=3, dropout=None,
+                 use_pair_output=True):
         super().__init__()
+        self.use_pair_output = use_pair_output
 
         self.net = FCBlock(in_features=in_features,
                            out_features=out_features,
@@ -227,7 +245,9 @@ class SingleBVPNet(MetaModule):
         # Enables us to compute gradients w.r.t. coordinates
         coords = model_input['coords']#.clone().detach().requires_grad_(True)
         output = self.net(coords, self.get_subdict(params, 'net'))
-        return {'model_in': coords, 'model_out': output}
+        if self.use_pair_output: 
+            return {'model_in': coords, 'model_out': output}
+        return output
 
     def forward_with_activations(self, model_input):
         '''Returns not only model output, but also intermediate activations.'''

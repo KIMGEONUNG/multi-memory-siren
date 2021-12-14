@@ -64,7 +64,7 @@ model.cuda()
 loss_fn = loss_functions.sdf
 root_path = os.path.join(opt.logging_root, opt.experiment_name)
 
-training.train(model=model,
+training.train_sdf(model=model,
                train_dataloader=dataloader,
                epochs=opt.num_epochs,
                lr=opt.lr,

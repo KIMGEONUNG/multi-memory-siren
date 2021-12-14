@@ -1,4 +1,4 @@
-name_exp='experiment_6'
+name_exp='experiment_7'
 dim_embd=17
 num_class=256
 dim_hidden=512

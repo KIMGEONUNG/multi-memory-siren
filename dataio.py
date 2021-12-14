@@ -390,6 +390,7 @@ class WaveSource(Dataset):
         return {'coords': coords}, {'source_boundary_values': boundary_values, 'dirichlet_mask': dirichlet_mask,
                                     'squared_slowness': squared_slowness, 'squared_slowness_grid': squared_slowness_grid}
 
+# This is for test data reconstruction
 class PointCloudSingle(Dataset):
     def __init__(self, pointcloud_path, on_surface_points, keep_aspect_ratio=True):
         super().__init__()
@@ -445,11 +446,99 @@ class PointCloudSingle(Dataset):
         return {'coords': torch.from_numpy(coords).float()}, {'sdf': torch.from_numpy(sdf).float(),
                                                               'normals': torch.from_numpy(normals).float()}
 
+class PointCloudRGB(Dataset):
+    def __init__(self, pointcloud_path, on_surface_points, keep_aspect_ratio=True):
+        super().__init__()
+
+        paths = [join(pointcloud_path, p) for p in listdir(pointcloud_path)]
+        paths.sort()
+        self.num_data = len(paths)
+
+        # Make Coordinate
+        coords_ls = []
+        normals_ls = []
+        rgbs_ls = []
+        ids_ls = []
+
+        print('Load data ...')
+        for i, path in enumerate(tqdm(paths)):
+            point_cloud = np.genfromtxt(path)
+
+            coords = point_cloud[:, :3]
+            coords = self._normalize(coords)
+
+            normals = point_cloud[:, 3:6]
+            rgbs = point_cloud[:, 6:]
+
+            ids =np.ones(coords.shape[0]).astype(int) * i
+
+            coords_ls.append(coords)
+            normals_ls.append(normals)
+            ids_ls.append(ids)
+            rgbs_ls.append(rgbs)
+        print('finished')
+
+        self.coords = np.concatenate(coords_ls)
+        self.normals = np.concatenate(normals_ls)
+        self.rgbs = np.concatenate(rgbs_ls)
+        self.ids = np.concatenate(ids_ls)
+
+        self.on_surface_points = on_surface_points
+
+    def _normalize(self, coords):
+        coords -= np.mean(coords, axis=0, keepdims=True)
+        coord_max = np.amax(coords)
+        coord_min = np.amin(coords)
+
+        coords = (coords - coord_min) / (coord_max - coord_min)
+        coords -= 0.5
+        coords *= 2.
+        return coords
+
+    def __len__(self):
+        return self.coords.shape[0] // self.on_surface_points
+
+    def __getitem__(self, idx):
+        point_cloud_size = self.coords.shape[0]
+
+        off_surface_samples = self.on_surface_points  # **2
+        total_samples = self.on_surface_points + off_surface_samples
+
+        # Random coords
+        rand_idcs = np.random.choice(point_cloud_size, size=self.on_surface_points)
+
+        on_rgbs_ids = self.rgbs[rand_idcs]
+        rgbs = on_rgbs_ids
+
+        on_surface_ids = self.ids[rand_idcs]
+        off_surface_ids = self.ids[rand_idcs]
+
+        on_surface_coords = self.coords[rand_idcs, :]
+        off_surface_coords = np.random.uniform(-1, 1, size=(off_surface_samples, 3))
+
+        on_surface_normals = self.normals[rand_idcs, :]
+        off_surface_normals = np.ones((off_surface_samples, 3)) * -1
+
+        sdf = np.zeros((total_samples, 1))  # on-surface = 0
+        sdf[self.on_surface_points:, :] = -1  # off-surface = -1
+
+        coords = np.concatenate((on_surface_coords, off_surface_coords), axis=0)
+        normals = np.concatenate((on_surface_normals, off_surface_normals), axis=0)
+        ids = np.concatenate((on_surface_ids, off_surface_ids), axis=0)
+
+        return {'coords': torch.from_numpy(coords).float(),
+                'ids': torch.from_numpy(ids).long()}, \
+               {'sdf': torch.from_numpy(sdf).float(),
+                'normals': torch.from_numpy(normals).float(),
+                'rgbs': torch.from_numpy(rgbs).float()}
+
+
 class PointCloud(Dataset):
     def __init__(self, pointcloud_path, on_surface_points, keep_aspect_ratio=True):
         super().__init__()
 
         paths = [join(pointcloud_path, p) for p in listdir(pointcloud_path)]
+        paths.sort()
         self.num_data = len(paths)
 
         # Make Coordinate
