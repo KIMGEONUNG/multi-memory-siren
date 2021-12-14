@@ -33,7 +33,8 @@ p.add_argument('--dropout', type=float, default=None)
 opt = p.parse_args()
 
 # Define the model.
-model = modules.SDFDecoder(opt.num_class,
+# make sure to check if this is decoder vs, decodercodebound
+model = modules.SDFDecoderdsdsd(opt.num_class,
                            opt.dim_embd,
                            opt.dim_hidden,
                            opt.num_layer,

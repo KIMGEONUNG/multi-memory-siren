@@ -14,15 +14,7 @@ def train_sdfc2(model, train_dataloader, epochs, lr, steps_til_summary,
           epochs_til_checkpoint, model_dir, loss_shape, loss_color,
           clip_grad=False, loss_schedules=None):
 
-    # separate optimizers
-    shape_params=list(model.net_sdf.parameters())
-    shape_params.append(model.embd.weight)
-    color_params=list(model.net_rgb.parameters())
-    color_params.append(model.embdc.weight)
-    optim_shape = torch.optim.Adam(shape_params,lr=lr)
-    optim_color = torch.optim.Adam(color_params,lr=lr)
-
-    #optim = torch.optim.Adam(lr=lr, params=model.parameters())
+    optim = torch.optim.Adam(model.parameters(),lr=lr)
 
     if os.path.exists(model_dir):
         val = input("The model directory %s exists. Overwrite? (y/n)"%model_dir)
@@ -62,22 +54,12 @@ def train_sdfc2(model, train_dataloader, epochs, lr, steps_til_summary,
                     shape_loss += single_loss
 
                 color_loss = loss_c['rgb'].mean()
-                
-                torch.autograd.set_detect_anomaly(True)
+                train_loss = color_loss + shape_loss
 
-                optim_shape.zero_grad()
-                shape_loss.backward(retain_graph=True)
-                optim_shape.step()
+                optim.zero_grad()
+                train_loss.backward()
+                optim.step()
 
-                optim_color.zero_grad()
-                color_loss.backward()
-                optim_color.step()
-                #import pdb; pdb.set_trace()                
-                #color_loss = loss_c['rgb'].mean()
-                #color_loss.backward()
-                #optim_color.step()
-
-                train_loss = color_loss.item()+shape_loss.item()
                 train_losses.append(train_loss.item())
 
                 if not total_steps % steps_til_summary:

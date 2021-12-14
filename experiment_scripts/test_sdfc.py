@@ -24,6 +24,8 @@ p.add_argument('--resolution', type=int, default=1600)
 
 ################### Check this option ##################
 p.add_argument('--dim_embd', type=int, default=7)
+p.add_argument('--dim_embdc', type=int, default=None)
+p.add_argument('--c2_conditioned',type=bool, default=True)
 p.add_argument('--num_class', type=int, default=20)
 p.add_argument('--dim_hidden', type=int, default=256)
 p.add_argument('--num_layer', type=int, default=3)
@@ -33,12 +35,20 @@ p.add_argument('--dropout', type=float, default=None)
 opt = p.parse_args()
 
 # Define the model.
-model = modules.SDFCDecoder(opt.num_class,
+if opt.dim_embdc==None:
+    model = modules.SDFCDecoder(opt.num_class,
                            opt.dim_embd,
                            opt.dim_hidden,
                            opt.num_layer,
                            opt.dropout)
-
+else:
+    model = modules.SDFC2Decoder(opt.num_class,
+                           opt.dim_embd,
+                           opt.dim_embdc,
+                           opt.c2_conditioned,
+                           opt.dim_hidden,
+                           opt.num_layer,
+                           opt.dropout)
 model.load_state_dict(torch.load(opt.checkpoint_path))
 model.cuda()
 

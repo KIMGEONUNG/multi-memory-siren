@@ -7,33 +7,33 @@ import math
 import torch.nn.functional as F
 
 
-# class SDFDecoderCodeBound(torch.nn.Module):
-#     def __init__(self, 
-#                  num_class: int, 
-#                  dim_embd: int,
-#                  dim_hidden=256,
-#                  num_layer=3):
-#         super().__init__()
-#         # Define the model.
-#         self.model = SingleBVPNet(type='sine',
-#                 final_layer_factor=1,
-#                 in_features=3 + dim_embd,
-#                 hidden_features=dim_hidden,
-#                 num_hidden_layers=num_layer)
-#         # added norm for latent vector
-#         #settings identical with DeepSDF
-#         self.embd = nn.Embedding(num_class, dim_embd,max_norm=1.0)
-#         nn.init.normal_(self.embd.weight,0.0,1.0/math.sqrt(dim_embd))
+class SDFDecoderCodeBound(torch.nn.Module):
+    def __init__(self, 
+                 num_class: int, 
+                 dim_embd: int,
+                 dim_hidden=256,
+                 num_layer=3,
+                 dropout=0):
+        super().__init__()
+        # Define the model.
+        self.model = SingleBVPNet(type='sine',
+                in_features=3 + dim_embd,
+                hidden_features=dim_hidden,
+                num_hidden_layers=num_layer)
+        # added norm for latent vector
+        #settings identical with DeepSDF
+        self.embd = nn.Embedding(num_class, dim_embd,max_norm=1.0)
+        nn.init.normal_(self.embd.weight,0.0,1.0/math.sqrt(dim_embd))
 
-#     # def forward(self, coords, c):
-#     def forward(self, model_input):
-#         coords = model_input['coords']
-#         c = model_input['ids']
-#         c_embd = self.embd(c)
-#         coords = torch.cat([coords, c_embd], axis=-1)
+    # def forward(self, coords, c):
+    def forward(self, model_input):
+        coords = model_input['coords']
+        c = model_input['ids']
+        c_embd = self.embd(c)
+        coords = torch.cat([coords, c_embd], axis=-1)
 
-#         model_in = {'coords': coords}
-#         return self.model(model_in)
+        model_in = {'coords': coords}
+        return self.model(model_in)
 
 class SDFC2Decoder(torch.nn.Module):
     def __init__(self, 
@@ -80,17 +80,19 @@ class SDFC2Decoder(torch.nn.Module):
         c = model_input['ids']
         model_input={'coords': coords}
 
-        c_embd = self.embd(c) # shape code
-        c_embdc = self.embdc(c) # color code
+        c_embd = self.embd(c.detach()) # shape code
+        c_embdc = self.embdc(c.detach()) # color code
 
         coords_sdf = torch.cat([coords, c_embd],axis=-1)
         model_in = {'coords': coords_sdf} # xyz + shape embedding
         sdf = self.net_sdf(model_in)
 
         if self.conditioned:
-            coords_rgb = torch.cat([coords, sdf, c_embdc, c_embd], axis=-1)
+            coords_rgb = torch.cat([coords.detach(), sdf.detach(),
+             c_embdc, c_embd.detach()], axis=-1)
         else:
-            coords_rgb = torch.cat([coords, sdf, c_embdc], axis=-1)
+            coords_rgb = torch.cat([coords.detach(), sdf.detach(), 
+            c_embdc], axis=-1)
         model_in = {'coords': coords_rgb}
         rgb = self.net_rgb(model_in)
 

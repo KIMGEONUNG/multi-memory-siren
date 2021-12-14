@@ -212,9 +212,8 @@ def helmholtz_pml(model_output, gt):
 
 
 def color(x, gt):
-    #import pdb; pdb.set_trace()
-    x_ = x[..., :gt.shape[-2], :] 
-    loss = F.mse_loss(x_, gt)
+    x = x[..., :gt.shape[-2], :] 
+    loss = F.mse_loss(x, gt)
     return loss
 
 
@@ -243,8 +242,8 @@ def sdf(model_output, gt):
     gt_normals = gt['normals']
 
     coords = model_output['model_in']
+    # coords = model_output['model_in'][...,:3]
     pred_sdf = model_output['model_out']
-
     gradient = diff_operators.gradient(pred_sdf, coords)
 
     # Wherever boundary_values is not equal to zero, we interpret it as a boundary constraint.
