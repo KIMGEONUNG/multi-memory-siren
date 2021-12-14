@@ -211,6 +211,24 @@ def helmholtz_pml(model_output, gt):
             'data_term': torch.abs(data_term).sum() * batch_size / 1}
 
 
+def color(x, gt):
+    x = x[..., :gt.shape[-2], :] 
+    loss = F.mse_loss(x, gt)
+    return loss
+
+
+def sdfc(model_output, gt):
+    '''
+       x: batch of input coordinates
+       y: usually the output of the trial_soln function
+       '''
+    loss = sdf(model_output, gt)
+    loss_rgb = color(model_output['model_out_rgb'],
+                     gt['rgbs'])
+    loss['rgb'] = loss_rgb 
+    return loss
+ 
+
 def sdf(model_output, gt):
     '''
        x: batch of input coordinates

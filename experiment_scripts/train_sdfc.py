@@ -47,13 +47,13 @@ p.add_argument('--clip_grad', default=False)
 
 opt = p.parse_args()
 
-sdf_dataset = dataio.PointCloudNecessaryLoad(opt.point_cloud_path,
-                                on_surface_points=opt.batch_size,num_class=opt.num_class)
+sdf_dataset = dataio.PointCloudRGB(opt.point_cloud_path,
+                                on_surface_points=opt.batch_size)
 dataloader = DataLoader(sdf_dataset, shuffle=True,
                         batch_size=1, pin_memory=True, num_workers=0)
 
 # Define the model.
-model = modules.SDFDecoder(opt.num_class,
+model = modules.SDFCDecoder(opt.num_class,
                            opt.dim_embd,
                            opt.dim_hidden,
                            opt.num_layer,
@@ -61,10 +61,10 @@ model = modules.SDFDecoder(opt.num_class,
 model.cuda()
 
 # Define the loss
-loss_fn = loss_functions.sdf
+loss_fn = loss_functions.sdfc
 root_path = os.path.join(opt.logging_root, opt.experiment_name)
 
-training.train_sdf(model=model,
+training.train_sdfc(model=model,
                train_dataloader=dataloader,
                epochs=opt.num_epochs,
                lr=opt.lr,

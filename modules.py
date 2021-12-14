@@ -6,6 +6,7 @@ from collections import OrderedDict
 import math
 import torch.nn.functional as F
 
+
 class SDFDecoderCodeBound(torch.nn.Module):
     def __init__(self, 
                  num_class: int, 
@@ -35,22 +36,77 @@ class SDFDecoderCodeBound(torch.nn.Module):
         return self.model(model_in)
 
 
+class SDFCDecoder(torch.nn.Module):
+    def __init__(self, 
+                 num_class: int, 
+                 dim_embd: int,
+                 dim_hidden=256,
+                 num_layer=3,
+                 dropout=None):
+        super().__init__()
+
+        # Define the model.
+        self.net_rgb = SingleBVPNet(type='sine',
+                                  out_features=3,
+                                  in_features=3 + dim_embd,
+                                  hidden_features=dim_hidden,
+                                  num_hidden_layers=num_layer,
+                                  dropout=dropout,
+                                  use_pair_output=False)
+
+        self.net_sdf = SingleBVPNet(type='sine',
+                                  out_features=1,
+                                  in_features=3 + dim_embd,
+                                  hidden_features=dim_hidden,
+                                  num_hidden_layers=num_layer,
+                                  dropout=dropout,
+                                  use_pair_output=False)
+        self.embd = nn.Embedding(num_class, dim_embd, max_norm=1.0)
+
+    def forward(self, model_input):
+        coords = model_input['coords']
+        c = model_input['ids']
+        c_embd = self.embd(c)
+
+        coords = torch.cat([coords, c_embd], axis=-1)
+
+        model_in = {'coords': coords}
+        sdf = self.net_sdf(model_in)
+        rgb = self.net_rgb(model_in)
+
+        return model_in, sdf, rgb
+
+
+    def forward_with_code(self, coords, c_embd):
+        raise NotImplementedError()
+        if len(coords.shape) == 2:
+            coords = coords.unsqueeze(0)
+
+        c_embd = c_embd.view(1, 1, -1)
+        c_embd = c_embd.expand(1, coords.shape[-2], c_embd.shape[-1])
+
+        coords = torch.cat([coords, c_embd], axis=-1)
+        model_in = {'coords': coords}
+        return self.net_sdf(model_in)
+
+
 class SDFDecoder(torch.nn.Module):
     def __init__(self, 
                  num_class: int, 
                  dim_embd: int,
                  dim_hidden=256,
-                 num_layer=3):
+                 num_layer=3,
+                 dropout=None):
         super().__init__()
         # Define the model.
         self.model = SingleBVPNet(type='sine',
-                final_layer_factor=1,
                 in_features=3 + dim_embd,
                 hidden_features=dim_hidden,
-                num_hidden_layers=num_layer)
-        self.embd = nn.Embedding(num_class, dim_embd)
+                num_hidden_layers=num_layer,
+                dropout=dropout)
 
-    # def forward(self, coords, c):
+        self.embd = nn.Embedding(num_class, dim_embd, max_norm=1.0)
+
     def forward(self, model_input):
         coords = model_input['coords']
         c = model_input['ids']
@@ -60,23 +116,14 @@ class SDFDecoder(torch.nn.Module):
         model_in = {'coords': coords}
         return self.model(model_in)
 
-# when latent code is directly given instead of looking up in embedding
-class SDFDecoderInference(SDFDecoder):
-    def __init__(self,num_class: int, 
-                 dim_embd: int,
-                 dim_hidden=256,
-                 num_layer=3):
-        super().__init__(num_class,dim_embd,dim_hidden,num_layer)
-        
+    def forward_with_code(self, coords, c_embd):
+        if len(coords.shape) == 2:
+            coords = coords.unsqueeze(0)
 
-    def forward(self,model_input,latent):
-        coords = model_input['coords']
-        #c = model_input['ids']
-        #c_embd = self.embd(c)
-        c_embd=latent#.repeat(len(coords),1)
-        #import pdb; pdb.set_trace()
+        c_embd = c_embd.view(1, 1, -1)
+        c_embd = c_embd.expand(1, coords.shape[-2], c_embd.shape[-1])
+
         coords = torch.cat([coords, c_embd], axis=-1)
-
         model_in = {'coords': coords}
         return self.model(model_in)
 
@@ -112,8 +159,15 @@ class FCBlock(MetaModule):
     Can be used just as a normal neural network though, as well.
     '''
 
-    def __init__(self, in_features, out_features, num_hidden_layers, hidden_features,
-                 outermost_linear=False, nonlinearity='relu', weight_init=None):
+    def __init__(self, 
+                 in_features, 
+                 out_features, 
+                 num_hidden_layers,
+                 hidden_features,
+                 outermost_linear=False, 
+                 nonlinearity='relu', 
+                 weight_init=None,
+                 dropout=None):
         super().__init__()
 
         self.first_layer_init = None
@@ -139,11 +193,16 @@ class FCBlock(MetaModule):
         self.net.append(MetaSequential(
             BatchLinear(in_features, hidden_features), nl
         ))
+        if dropout is not None:
+            self.net.append(nn.Dropout(dropout, True))
 
         for i in range(num_hidden_layers):
             self.net.append(MetaSequential(
                 BatchLinear(hidden_features, hidden_features), nl
             ))
+            if dropout is not None:
+                self.net.append(nn.Dropout(dropout, True))
+
 
         if outermost_linear:
             self.net.append(MetaSequential(BatchLinear(hidden_features, out_features)))
@@ -193,24 +252,19 @@ class SingleBVPNet(MetaModule):
     '''A canonical representation network for a BVP.'''
 
     def __init__(self, out_features=1, type='sine', in_features=2,
-                 mode='mlp', hidden_features=256, num_hidden_layers=3, **kwargs):
+                 hidden_features=256, num_hidden_layers=3, dropout=None,
+                 use_pair_output=True):
         super().__init__()
-        self.mode = mode
+        self.use_pair_output = use_pair_output
 
-        if self.mode == 'rbf':
-            self.rbf_layer = RBFLayer(in_features=in_features, out_features=kwargs.get('rbf_centers', 1024))
-            in_features = kwargs.get('rbf_centers', 1024)
-        elif self.mode == 'nerf':
-            self.positional_encoding = PosEncodingNeRF(in_features=in_features,
-                                                       sidelength=kwargs.get('sidelength', None),
-                                                       fn_samples=kwargs.get('fn_samples', None),
-                                                       use_nyquist=kwargs.get('use_nyquist', True))
-            in_features = self.positional_encoding.out_dim
-
-        self.image_downsampling = ImageDownsampling(sidelength=kwargs.get('sidelength', None),
-                                                    downsample=kwargs.get('downsample', False))
-        self.net = FCBlock(in_features=in_features, out_features=out_features, num_hidden_layers=num_hidden_layers,
-                           hidden_features=hidden_features, outermost_linear=True, nonlinearity=type)
+        self.net = FCBlock(in_features=in_features,
+                           out_features=out_features,
+                           num_hidden_layers=num_hidden_layers,
+                           hidden_features=hidden_features,
+                           outermost_linear=True,
+                           nonlinearity=type,
+                           dropout=dropout)
+                        
         print(self)
 
     def forward(self, model_input, params=None):
@@ -218,402 +272,17 @@ class SingleBVPNet(MetaModule):
             params = OrderedDict(self.named_parameters())
 
         # Enables us to compute gradients w.r.t. coordinates
-        coords_org = model_input['coords'].clone().detach().requires_grad_(True)
-        coords = coords_org
-
-        # various input processing methods for different applications
-        if self.image_downsampling.downsample:
-            coords = self.image_downsampling(coords)
-        if self.mode == 'rbf':
-            coords = self.rbf_layer(coords)
-        elif self.mode == 'nerf':
-            coords = self.positional_encoding(coords)
-
+        coords = model_input['coords']#.clone().detach().requires_grad_(True)
         output = self.net(coords, self.get_subdict(params, 'net'))
-        return {'model_in': coords_org, 'model_out': output}
+        if self.use_pair_output: 
+            return {'model_in': coords, 'model_out': output}
+        return output
 
     def forward_with_activations(self, model_input):
         '''Returns not only model output, but also intermediate activations.'''
         coords = model_input['coords'].clone().detach().requires_grad_(True)
         activations = self.net.forward_with_activations(coords)
         return {'model_in': coords, 'model_out': activations.popitem(), 'activations': activations}
-
-
-class PINNet(nn.Module):
-    '''Architecture used by Raissi et al. 2019.'''
-
-    def __init__(self, out_features=1, type='tanh', in_features=2, mode='mlp'):
-        super().__init__()
-        self.mode = mode
-
-        self.net = FCBlock(in_features=in_features, out_features=out_features, num_hidden_layers=8,
-                           hidden_features=20, outermost_linear=True, nonlinearity=type,
-                           weight_init=init_weights_trunc_normal)
-        print(self)
-
-    def forward(self, model_input):
-        # Enables us to compute gradients w.r.t. input
-        coords = model_input['coords'].clone().detach().requires_grad_(True)
-        output = self.net(coords)
-        return {'model_in': coords, 'model_out': output}
-
-
-class ImageDownsampling(nn.Module):
-    '''Generate samples in u,v plane according to downsampling blur kernel'''
-
-    def __init__(self, sidelength, downsample=False):
-        super().__init__()
-        if isinstance(sidelength, int):
-            self.sidelength = (sidelength, sidelength)
-        else:
-            self.sidelength = sidelength
-
-        if self.sidelength is not None:
-            self.sidelength = torch.Tensor(self.sidelength).cuda().float()
-        else:
-            assert downsample is False
-        self.downsample = downsample
-
-    def forward(self, coords):
-        if self.downsample:
-            return coords + self.forward_bilinear(coords)
-        else:
-            return coords
-
-    def forward_box(self, coords):
-        return 2 * (torch.rand_like(coords) - 0.5) / self.sidelength
-
-    def forward_bilinear(self, coords):
-        Y = torch.sqrt(torch.rand_like(coords)) - 1
-        Z = 1 - torch.sqrt(torch.rand_like(coords))
-        b = torch.rand_like(coords) < 0.5
-
-        Q = (b * Y + ~b * Z) / self.sidelength
-        return Q
-
-
-class PosEncodingNeRF(nn.Module):
-    '''Module to add positional encoding as in NeRF [Mildenhall et al. 2020].'''
-    def __init__(self, in_features, sidelength=None, fn_samples=None, use_nyquist=True):
-        super().__init__()
-
-        self.in_features = in_features
-
-        if self.in_features == 3:
-            self.num_frequencies = 10
-        elif self.in_features == 2:
-            assert sidelength is not None
-            if isinstance(sidelength, int):
-                sidelength = (sidelength, sidelength)
-            self.num_frequencies = 4
-            if use_nyquist:
-                self.num_frequencies = self.get_num_frequencies_nyquist(min(sidelength[0], sidelength[1]))
-        elif self.in_features == 1:
-            assert fn_samples is not None
-            self.num_frequencies = 4
-            if use_nyquist:
-                self.num_frequencies = self.get_num_frequencies_nyquist(fn_samples)
-
-        self.out_dim = in_features + 2 * in_features * self.num_frequencies
-
-    def get_num_frequencies_nyquist(self, samples):
-        nyquist_rate = 1 / (2 * (2 * 1 / samples))
-        return int(math.floor(math.log(nyquist_rate, 2)))
-
-    def forward(self, coords):
-        coords = coords.view(coords.shape[0], -1, self.in_features)
-
-        coords_pos_enc = coords
-        for i in range(self.num_frequencies):
-            for j in range(self.in_features):
-                c = coords[..., j]
-
-                sin = torch.unsqueeze(torch.sin((2 ** i) * np.pi * c), -1)
-                cos = torch.unsqueeze(torch.cos((2 ** i) * np.pi * c), -1)
-
-                coords_pos_enc = torch.cat((coords_pos_enc, sin, cos), axis=-1)
-
-        return coords_pos_enc.reshape(coords.shape[0], -1, self.out_dim)
-
-
-class RBFLayer(nn.Module):
-    '''Transforms incoming data using a given radial basis function.
-        - Input: (1, N, in_features) where N is an arbitrary batch size
-        - Output: (1, N, out_features) where N is an arbitrary batch size'''
-
-    def __init__(self, in_features, out_features):
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.centres = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.sigmas = nn.Parameter(torch.Tensor(out_features))
-        self.reset_parameters()
-
-        self.freq = nn.Parameter(np.pi * torch.ones((1, self.out_features)))
-
-    def reset_parameters(self):
-        nn.init.uniform_(self.centres, -1, 1)
-        nn.init.constant_(self.sigmas, 10)
-
-    def forward(self, input):
-        input = input[0, ...]
-        size = (input.size(0), self.out_features, self.in_features)
-        x = input.unsqueeze(1).expand(size)
-        c = self.centres.unsqueeze(0).expand(size)
-        distances = (x - c).pow(2).sum(-1) * self.sigmas.unsqueeze(0)
-        return self.gaussian(distances).unsqueeze(0)
-
-    def gaussian(self, alpha):
-        phi = torch.exp(-1 * alpha.pow(2))
-        return phi
-
-
-########################
-# Encoder modules
-class SetEncoder(nn.Module):
-    def __init__(self, in_features, out_features,
-                 num_hidden_layers, hidden_features, nonlinearity='relu'):
-        super().__init__()
-
-        assert nonlinearity in ['relu', 'sine'], 'Unknown nonlinearity type'
-
-        if nonlinearity == 'relu':
-            nl = nn.ReLU(inplace=True)
-            weight_init = init_weights_normal
-        elif nonlinearity == 'sine':
-            nl = Sine()
-            weight_init = sine_init
-
-        self.net = [nn.Linear(in_features, hidden_features), nl]
-        self.net.extend([nn.Sequential(nn.Linear(hidden_features, hidden_features), nl)
-                         for _ in range(num_hidden_layers)])
-        self.net.extend([nn.Linear(hidden_features, out_features), nl])
-        self.net = nn.Sequential(*self.net)
-
-        self.net.apply(weight_init)
-
-    def forward(self, context_x, context_y, ctxt_mask=None, **kwargs):
-        input = torch.cat((context_x, context_y), dim=-1)
-        embeddings = self.net(input)
-
-        if ctxt_mask is not None:
-            embeddings = embeddings * ctxt_mask
-            embedding = embeddings.mean(dim=-2) * (embeddings.shape[-2] / torch.sum(ctxt_mask, dim=-2))
-            return embedding
-        return embeddings.mean(dim=-2)
-
-
-class ConvImgEncoder(nn.Module):
-    def __init__(self, channel, image_resolution):
-        super().__init__()
-
-        # conv_theta is input convolution
-        self.conv_theta = nn.Conv2d(channel, 128, 3, 1, 1)
-        self.relu = nn.ReLU(inplace=True)
-
-        self.cnn = nn.Sequential(
-            nn.Conv2d(128, 256, 3, 1, 1),
-            nn.ReLU(),
-            Conv2dResBlock(256, 256),
-            Conv2dResBlock(256, 256),
-            Conv2dResBlock(256, 256),
-            Conv2dResBlock(256, 256),
-            nn.Conv2d(256, 256, 1, 1, 0)
-        )
-
-        self.relu_2 = nn.ReLU(inplace=True)
-        self.fc = nn.Linear(1024, 1)
-
-        self.image_resolution = image_resolution
-
-    def forward(self, I):
-        o = self.relu(self.conv_theta(I))
-        o = self.cnn(o)
-
-        o = self.fc(self.relu_2(o).view(o.shape[0], 256, -1)).squeeze(-1)
-        return o
-
-
-class PartialConvImgEncoder(nn.Module):
-    '''Adapted from https://github.com/NVIDIA/partialconv/blob/master/models/partialconv2d.py
-    '''
-    def __init__(self, channel, image_resolution):
-        super().__init__()
-
-        self.conv1 = PartialConv2d(channel, 256, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(256)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
-        self.layer1 = BasicBlock(256, 256)
-        self.layer2 = BasicBlock(256, 256)
-        self.layer3 = BasicBlock(256, 256)
-        self.layer4 = BasicBlock(256, 256)
-
-        self.image_resolution = image_resolution
-        self.channel = channel
-
-        self.relu_2 = nn.ReLU(inplace=True)
-        self.fc = nn.Linear(1024, 1)
-
-        for m in self.modules():
-            if isinstance(m, PartialConv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, I):
-        M_c = I.clone().detach()
-        M_c = M_c > 0.
-        M_c = M_c[:,0,...]
-        M_c = M_c.unsqueeze(1)
-        M_c = M_c.float()
-
-        x = self.conv1(I, M_c)
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-
-        o = self.fc(x.view(x.shape[0], 256, -1)).squeeze(-1)
-
-        return o
-
-
-class Conv2dResBlock(nn.Module):
-    '''Aadapted from https://github.com/makora9143/pytorch-convcnp/blob/master/convcnp/modules/resblock.py'''
-    def __init__(self, in_channel, out_channel=128):
-        super().__init__()
-        self.convs = nn.Sequential(
-            nn.Conv2d(in_channel, out_channel, 5, 1, 2),
-            nn.ReLU(),
-            nn.Conv2d(out_channel, out_channel, 5, 1, 2),
-            nn.ReLU()
-        )
-
-        self.final_relu = nn.ReLU()
-
-    def forward(self, x):
-        shortcut = x
-        output = self.convs(x)
-        output = self.final_relu(output + shortcut)
-        return output
-
-
-def channel_last(x):
-    return x.transpose(1, 2).transpose(2, 3)
-
-
-class PartialConv2d(nn.Conv2d):
-    def __init__(self, *args, **kwargs):
-
-        # whether the mask is multi-channel or not
-        if 'multi_channel' in kwargs:
-            self.multi_channel = kwargs['multi_channel']
-            kwargs.pop('multi_channel')
-        else:
-            self.multi_channel = False
-
-        if 'return_mask' in kwargs:
-            self.return_mask = kwargs['return_mask']
-            kwargs.pop('return_mask')
-        else:
-            self.return_mask = False
-
-        super(PartialConv2d, self).__init__(*args, **kwargs)
-
-        if self.multi_channel:
-            self.weight_maskUpdater = torch.ones(self.out_channels, self.in_channels, self.kernel_size[0], self.kernel_size[1])
-        else:
-            self.weight_maskUpdater = torch.ones(1, 1, self.kernel_size[0], self.kernel_size[1])
-
-        self.slide_winsize = self.weight_maskUpdater.shape[1] * self.weight_maskUpdater.shape[2] * self.weight_maskUpdater.shape[3]
-
-        self.last_size = (None, None, None, None)
-        self.update_mask = None
-        self.mask_ratio = None
-
-    def forward(self, input, mask_in=None):
-        assert len(input.shape) == 4
-        if mask_in is not None or self.last_size != tuple(input.shape):
-            self.last_size = tuple(input.shape)
-
-            with torch.no_grad():
-                if self.weight_maskUpdater.type() != input.type():
-                    self.weight_maskUpdater = self.weight_maskUpdater.to(input)
-
-                if mask_in is None:
-                    # if mask is not provided, create a mask
-                    if self.multi_channel:
-                        mask = torch.ones(input.data.shape[0], input.data.shape[1], input.data.shape[2], input.data.shape[3]).to(input)
-                    else:
-                        mask = torch.ones(1, 1, input.data.shape[2], input.data.shape[3]).to(input)
-                else:
-                    mask = mask_in
-
-                self.update_mask = F.conv2d(mask, self.weight_maskUpdater, bias=None, stride=self.stride, padding=self.padding, dilation=self.dilation, groups=1)
-
-                # for mixed precision training, change 1e-8 to 1e-6
-                self.mask_ratio = self.slide_winsize / (self.update_mask + 1e-8)
-                # self.mask_ratio = torch.max(self.update_mask)/(self.update_mask + 1e-8)
-                self.update_mask = torch.clamp(self.update_mask, 0, 1)
-                self.mask_ratio = torch.mul(self.mask_ratio, self.update_mask)
-
-        raw_out = super(PartialConv2d, self).forward(torch.mul(input, mask) if mask_in is not None else input)
-
-        if self.bias is not None:
-            bias_view = self.bias.view(1, self.out_channels, 1, 1)
-            output = torch.mul(raw_out - bias_view, self.mask_ratio) + bias_view
-            output = torch.mul(output, self.update_mask)
-        else:
-            output = torch.mul(raw_out, self.mask_ratio)
-
-        if self.return_mask:
-            return output, self.update_mask
-        else:
-            return output
-
-
-def conv3x3(in_planes, out_planes, stride=1):
-    """3x3 convolution with padding"""
-    return PartialConv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                         padding=1, bias=False)
-
-
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
 
 
 ########################

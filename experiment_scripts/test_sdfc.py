@@ -33,7 +33,7 @@ p.add_argument('--dropout', type=float, default=None)
 opt = p.parse_args()
 
 # Define the model.
-model = modules.SDFDecoder(opt.num_class,
+model = modules.SDFCDecoder(opt.num_class,
                            opt.dim_embd,
                            opt.dim_hidden,
                            opt.num_layer,
@@ -46,7 +46,7 @@ root_path = os.path.join(opt.logging_root, opt.experiment_name)
 utils.cond_mkdir(root_path)
 
 codes = list(range(opt.num_class))
-sdf_meshing.create_mesh_multi(model,
-                              os.path.join(root_path, 'test'),
-                              codes=codes,
-                              N=opt.resolution)
+sdf_meshing.create_mesh_rgb_multi(model,
+                                  os.path.join(root_path, 'test'),
+                                  codes=codes,
+                                  N=opt.resolution)
