@@ -6,6 +6,44 @@ from collections import OrderedDict
 import math
 import torch.nn.functional as F
 
+class RGBDecoder(torch.nn.Module):
+    def __init__(self, 
+                 num_class: int, 
+                 dim_embd: int,
+                 dim_hidden=256,
+                 num_layer=3,
+                 dropout=None):
+        super().__init__()
+
+        # Define the model.
+        self.model = SingleBVPNet(type='sine',
+                                  out_features=3,
+                                  in_features=3 + dim_embd,
+                                  hidden_features=dim_hidden,
+                                  num_hidden_layers=num_layer,
+                                  dropout=dropout)
+        self.embd = nn.Embedding(num_class, dim_embd, max_norm=1.0)
+
+    def forward(self, model_input):
+        coords = model_input['coords']
+        c = model_input['ids']
+        c_embd = self.embd(c)
+        coords = torch.cat([coords, c_embd], axis=-1)
+
+        model_in = {'coords': coords}
+        return self.model(model_in)
+
+    def forward_with_code(self, coords, c_embd):
+        if len(coords.shape) == 2:
+            coords = coords.unsqueeze(0)
+
+        c_embd = c_embd.view(1, 1, -1)
+        c_embd = c_embd.expand(1, coords.shape[-2], c_embd.shape[-1])
+
+        coords = torch.cat([coords, c_embd], axis=-1)
+        model_in = {'coords': coords}
+        return self.model(model_in)
+
 
 class SDFDecoder(torch.nn.Module):
     def __init__(self, 
