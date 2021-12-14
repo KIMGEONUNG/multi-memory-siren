@@ -18,35 +18,38 @@ class SDFCDecoder(torch.nn.Module):
 
         # Define the model.
         self.net_rgb = SingleBVPNet(type='sine',
-                                  out_features=3,
-                                  in_features=3 + dim_embd,
-                                  hidden_features=dim_hidden,
-                                  num_hidden_layers=num_layer,
-                                  dropout=dropout,
-                                  use_pair_output=False)
+                                    out_features=3,
+                                    in_features=3 + dim_embd,
+                                    hidden_features=dim_hidden,
+                                    num_hidden_layers=num_layer,
+                                    dropout=dropout,
+                                    use_pair_output=False)
 
         self.net_sdf = SingleBVPNet(type='sine',
-                                  out_features=1,
-                                  in_features=3 + dim_embd,
-                                  hidden_features=dim_hidden,
-                                  num_hidden_layers=num_layer,
-                                  dropout=dropout,
-                                  use_pair_output=False)
-        self.embd = nn.Embedding(num_class, dim_embd, max_norm=1.0)
+                                    out_features=1,
+                                    in_features=3 + dim_embd,
+                                    hidden_features=dim_hidden,
+                                    num_hidden_layers=num_layer,
+                                    dropout=dropout,
+                                    use_pair_output=False)
+        self.embd_sdf = nn.Embedding(num_class, dim_embd, max_norm=1.0)
+        self.embd_rgb = nn.Embedding(num_class, dim_embd, max_norm=1.0)
 
     def forward(self, model_input):
         coords = model_input['coords']
         c = model_input['ids']
-        c_embd = self.embd(c)
+        c_embd_sdf = self.embd_sdf(c.detach())
+        c_embd_rgb = self.embd_rgb(c.detach())
 
-        coords = torch.cat([coords, c_embd], axis=-1)
+        coords_sdf = torch.cat([coords, c_embd_sdf], axis=-1)
+        coords_rgb = torch.cat([coords, c_embd_rgb], axis=-1)
 
-        model_in = {'coords': coords}
-        sdf = self.net_sdf(model_in)
-        rgb = self.net_rgb(model_in)
+        model_in_sdf = {'coords': coords_sdf}
+        model_in_rgb = {'coords': coords_rgb}
+        sdf = self.net_sdf(model_in_sdf)
+        rgb = self.net_rgb(model_in_rgb)
 
-        return model_in, sdf, rgb
-
+        return model_in_sdf, sdf, rgb
 
     def forward_with_code(self, coords, c_embd):
         raise NotImplementedError()

@@ -16,6 +16,7 @@ def train_sdfc(model, train_dataloader, epochs, lr, steps_til_summary,
           clip_grad=False, loss_schedules=None):
 
     optim = torch.optim.Adam(lr=lr, params=model.parameters())
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=25, eta_min=0)
 
     if os.path.exists(model_dir):
         val = input("The model directory %s exists. Overwrite? (y/n)"%model_dir)
@@ -68,6 +69,8 @@ def train_sdfc(model, train_dataloader, epochs, lr, steps_til_summary,
                 if not total_steps % steps_til_summary:
                     tqdm.write("Epoch %d, Total loss %0.6f, iteration time %0.6f" % (epoch, train_loss, time.time() - start_time))
                 total_steps += 1
+
+            scheduler.step()
 
         torch.save(model.state_dict(),
                    os.path.join(checkpoints_dir, 'model_final.pth'))
