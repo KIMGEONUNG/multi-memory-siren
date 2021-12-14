@@ -42,6 +42,7 @@ def parse():
     p.add_argument('--num_layer', type=int, default=3)
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--num_iter', type=int, default=2000)
+    p.add_argument('--dropout', type=float, default=None)
     ########################################################
     opt = p.parse_args()
     return opt
@@ -60,7 +61,8 @@ def main(opt):
     model = modules.SDFDecoder(opt.num_class,
                                opt.dim_embd,
                                opt.dim_hidden,
-                               opt.num_layer)
+                               opt.num_layer,
+                               opt.dropout)
     model.load_state_dict(torch.load(opt.checkpoint_path))
     model.eval()
     model.cuda()

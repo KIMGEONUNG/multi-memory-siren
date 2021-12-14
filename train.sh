@@ -2,8 +2,7 @@ source common.sh
 
 xyz=./xyzs_10000
 # xyz=./xyzs_old1
-size_batch=170000
-dropout=0.3
+size_batch=160000
 
 python experiment_scripts/train_sdf.py \
        --model_type=sine \

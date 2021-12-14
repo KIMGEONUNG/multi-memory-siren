@@ -11,4 +11,5 @@ CUDA_VISIBLE_DEVICES=1 python experiment_scripts/test_sdf.py \
                               --dim_embd=$dim_embd \
                               --num_class=$num_class \
                               --dim_hidden=$dim_hidden \
-                              --num_layer=$num_layer 
+                              --num_layer=$num_layer \
+                              --dropout=$dropout  

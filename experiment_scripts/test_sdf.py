@@ -27,6 +27,7 @@ p.add_argument('--dim_embd', type=int, default=7)
 p.add_argument('--num_class', type=int, default=20)
 p.add_argument('--dim_hidden', type=int, default=256)
 p.add_argument('--num_layer', type=int, default=3)
+p.add_argument('--dropout', type=float, default=None)
 ########################################################
 
 opt = p.parse_args()
@@ -35,7 +36,9 @@ opt = p.parse_args()
 model = modules.SDFDecoder(opt.num_class,
                            opt.dim_embd,
                            opt.dim_hidden,
-                           opt.num_layer)
+                           opt.num_layer,
+                           opt.dropout)
+
 model.load_state_dict(torch.load(opt.checkpoint_path))
 model.cuda()
 

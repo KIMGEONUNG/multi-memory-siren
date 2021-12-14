@@ -42,6 +42,7 @@ p.add_argument('--num_class', type=int, default=20)
 p.add_argument('--dim_hidden', type=int, default=256)
 p.add_argument('--num_layer', type=int, default=3)
 p.add_argument('--dropout', type=float, default=None)
+p.add_argument('--clip_grad', default=False)
 ########################################################
 
 opt = p.parse_args()
@@ -71,4 +72,4 @@ training.train(model=model,
                epochs_til_checkpoint=opt.epochs_til_ckpt,
                model_dir=root_path,
                loss_fn=loss_fn,
-               clip_grad=True)
+               clip_grad=opt.clip_grad)
