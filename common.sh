@@ -1,6 +1,6 @@
-name_exp='experiment_7'
-dim_embd=3
-num_class=10
-dim_hidden=256
-num_layer=3
+name_exp='experiment_8'
+dim_embd=17
+num_class=256
+dim_hidden=512
+num_layer=4
 dropout=0

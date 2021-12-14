@@ -1,10 +1,9 @@
 source common.sh
 
-# xyz=./xyzs_old1
 xyz='xyznrgb'
-size_batch=16000
+size_batch=120000
 
-CUDA_VISIBLE_DEVICES=1 python experiment_scripts/train_sdfc.py \
+CUDA_VISIBLE_DEVICES=0 python experiment_scripts/train_sdfc.py \
        --model_type=sine \
        --point_cloud_path=$xyz \
        --batch_size=$size_batch \

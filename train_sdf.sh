@@ -1,8 +1,10 @@
 source common.sh
 
 xyz=./xyzs_10000
-# xyz=./xyzs_old1
 size_batch=160000
+
+cp common.sh logs/$name_exp_test
+cp test_sdfc.sh logs/$name_exp_test
 
 python experiment_scripts/train_sdf.py \
        --model_type=sine \
