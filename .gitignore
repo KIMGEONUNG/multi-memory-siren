@@ -3,6 +3,7 @@ dataset
 objs
 xyzs
 xyzs*
+xyzn*
 
 logs
 # Byte-compiled / optimized / DLL files
