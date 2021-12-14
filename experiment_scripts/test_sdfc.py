@@ -52,7 +52,11 @@ else:
 model.load_state_dict(torch.load(opt.checkpoint_path))
 model.cuda()
 
-root_path = os.path.join(opt.logging_root, opt.experiment_name)
+try:
+        epoch=opt.checkpoint_path.split('/')[-1].split('_')[-1].split('.')[0]
+except:
+        epoch='unknown_epoch_{}'.format(rand(100))
+root_path = os.path.join(opt.logging_root, opt.experiment_name,epoch)
 utils.cond_mkdir(root_path)
 
 codes = list(range(opt.num_class))
