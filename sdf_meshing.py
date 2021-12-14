@@ -133,7 +133,6 @@ def create_mesh_rgb_multi(
                 .cpu()
             )
             head += max_batch
-            break;
 
         sdf_values = samples[:, 3]
         sdf_values = sdf_values.reshape(N, N, N)
@@ -313,10 +312,16 @@ def convert_sdfc_samples_to_ply(
     verts, faces, normals, values = np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0)
     try:
         verts, faces, normals, values = skimage.measure.marching_cubes_lewiner(
-            numpy_3d_sdf_tensor, level=0.0, spacing=[voxel_size] * 3
+            numpy_3d_sdf_tensor, level=0.0
         )
     except:
         pass
+
+    verts_ind = np.round(verts).astype(int)
+    verts *= voxel_size
+
+    # extract colors
+    rgb_vals = numpy_3d_rgb_tensor[verts_ind[:,0], verts_ind[:,1], verts_ind[:,2]]
 
     # transform from voxel coordinates to camera coordinates
     # note x and y are flipped in the output of marching_cubes
@@ -342,9 +347,18 @@ def convert_sdfc_samples_to_ply(
         verts_tuple[i] = tuple(mesh_points[i, :])
 
     faces_building = []
+
     for i in range(0, num_faces):
-        faces_building.append(((faces[i, :].tolist(),)))
-    faces_tuple = np.array(faces_building, dtype=[("vertex_indices", "i4", (3,))])
+        id_targets = faces[i, :]
+        color = np.mean(rgb_vals[id_targets,:], axis=0)
+        color = (color * 255).astype(int)
+        f = (faces[i, :].tolist(),) + tuple(color)
+        faces_building.append(f)
+    faces_tuple = np.array(faces_building, 
+                           dtype=[("vertex_indices", "i4", (3,)),
+                                  ('red', 'u1'), ('green', 'u1'),
+                                  ('blue', 'u1')])
+
 
     el_verts = plyfile.PlyElement.describe(verts_tuple, "vertex")
     el_faces = plyfile.PlyElement.describe(faces_tuple, "face")
