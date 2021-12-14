@@ -1,11 +1,8 @@
 source common.sh
 
 # xyz=./xyzs_old1
-xyz='xyznrgb_test'
-rm -rf logs//$name_exp
-
-size_batch=160000
-size_batch=1600
+xyz='xyznrgb'
+size_batch=16000
 
 CUDA_VISIBLE_DEVICES=1 python experiment_scripts/train_sdfc.py \
        --model_type=sine \
