@@ -14,7 +14,15 @@ def train_sdfc2(model, train_dataloader, epochs, lr, steps_til_summary,
           epochs_til_checkpoint, model_dir, loss_shape, loss_color,
           clip_grad=False, loss_schedules=None):
 
-    optim = torch.optim.Adam(model.parameters(),lr=lr)
+    #sdf_params=torch.cat(list(model.net_sdf.parameters()),list(model.embd.parameters())])
+    optim = torch.optim.Adam([
+        {'params': model.net_sdf.parameters()},
+        {'params': model.embd.parameters()}
+    ],lr=lr)
+    optim_c = torch.optim.Adam([
+        {'params': model.net_rgb.parameters()},
+        {'params': model.embdc.parameters()}
+    ],lr=lr)
 
     if os.path.exists(model_dir):
         val = input("The model directory %s exists. Overwrite? (y/n)"%model_dir)
@@ -45,22 +53,34 @@ def train_sdfc2(model, train_dataloader, epochs, lr, steps_til_summary,
                 loss_s = loss_shape({'model_in': model_in['coords'],
                                   'model_out': sdf},
                                  gt)
-                loss_c = loss_color({'model_in': model_in['coords'],'model_out_rgb':rgb},gt)
-
+                
                 shape_loss=0
                 color_loss=0
+
+                torch.autograd.set_detect_anomaly(True)
+                
+                #import pdb; pdb.set_trace()
+                # rgb net, embdc shouldn't be updated here
+                optim.zero_grad()
                 for loss_name, loss in loss_s.items():
                     single_loss = loss.mean()
                     shape_loss += single_loss
-
-                color_loss = loss_c['rgb'].mean()
-                train_loss = color_loss + shape_loss
-
-                optim.zero_grad()
-                train_loss.backward()
+                shape_loss.backward()
                 optim.step()
 
-                train_losses.append(train_loss.item())
+                #import pdb; pdb.set_trace()
+                # sdf, embd shouldn't be updated here
+                optim_c.zero_grad()
+                loss_c = loss_color({'model_in': model_in['coords'],'model_out_rgb':rgb},gt)
+                color_loss = loss_c['rgb']
+                color_loss.backward()
+                optim_c.step()
+
+
+                #TODO : temporary
+                train_loss = shape_loss+color_loss
+
+                train_losses.append(shape_loss)
 
                 if not total_steps % steps_til_summary:
                     torch.save(model.state_dict(),
@@ -121,7 +141,7 @@ def train_sdfc(model, train_dataloader, epochs, lr, steps_til_summary,
                 for loss_name, loss in losses.items():
                     single_loss = loss.mean()
                     train_loss += single_loss
-
+                
                 train_losses.append(train_loss.item())
 
                 if not total_steps % steps_til_summary:

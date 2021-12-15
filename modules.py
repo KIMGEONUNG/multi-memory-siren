@@ -72,16 +72,17 @@ class SDFC2Decoder(torch.nn.Module):
         self.embd = nn.Embedding(num_class, dim_embd, max_norm=1.0)
         nn.init.normal_(self.embd.weight,0.0,1.0/math.sqrt(dim_embd))
         self.embdc = nn.Embedding(num_class,dim_embdc,max_norm=1.0)
-        nn.init.normal_(self.embd.weight,0.0,1.0/math.sqrt(dim_embdc))
+        nn.init.normal_(self.embdc.weight,0.0,1.0/math.sqrt(dim_embdc))
 
     def forward(self, model_input):
         coords = model_input['coords']
         coords.requires_grad=True
         c = model_input['ids']
+        c.requires_grad=False
         model_input={'coords': coords}
 
-        c_embd = self.embd(c.detach()) # shape code
-        c_embdc = self.embdc(c.detach()) # color code
+        c_embd = self.embd(c) # shape code
+        c_embdc = self.embdc(c) # color code
 
         coords_sdf = torch.cat([coords, c_embd],axis=-1)
         model_in = {'coords': coords_sdf} # xyz + shape embedding
