@@ -72,7 +72,8 @@ def train_sdfc2(model, train_dataloader, epochs, lr, steps_til_summary,
                 # sdf, embd shouldn't be updated here
                 optim_c.zero_grad()
                 loss_c = loss_color({'model_in': model_in['coords'],'model_out_rgb':rgb},gt)
-                color_loss = loss_c['rgb']
+                factor=0.1
+                color_loss = factor*loss_c['rgb']
                 color_loss.backward()
                 optim_c.step()
 
@@ -80,7 +81,7 @@ def train_sdfc2(model, train_dataloader, epochs, lr, steps_til_summary,
                 #TODO : temporary
                 train_loss = shape_loss+color_loss
 
-                train_losses.append(shape_loss)
+                train_losses.append(train_loss)
 
                 if not total_steps % steps_til_summary:
                     torch.save(model.state_dict(),
@@ -91,7 +92,7 @@ def train_sdfc2(model, train_dataloader, epochs, lr, steps_til_summary,
                 
                 pbar.update(1)
                 if not total_steps % steps_til_summary:
-                    tqdm.write("Epoch %d, Total loss %0.6f, iteration time %0.6f" % (epoch, train_loss, time.time() - start_time))
+                    tqdm.write("Epoch %d, Shape loss %0.6f,color loss %0.6f, iteration time %0.6f" % (epoch, shape_loss, color_loss, time.time() - start_time))
                 total_steps += 1
 
         torch.save(model.state_dict(),

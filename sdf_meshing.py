@@ -280,13 +280,21 @@ def create_mesh_multi(
             embd = embd.cuda()
             
             model_input = {'coords': sample_subset, 'ids': embd}
+            _, sdf, rgb = decoder(model_input)
 
             samples[head : min(head + max_batch, num_samples), 3] = (
-                decoder(model_input)['model_out']
+                sdf
                 .squeeze()#.squeeze(1)
                 .detach()
                 .cpu()
             )
+
+            # samples[head : min(head + max_batch, num_samples), 3] = (
+            #     decoder(model_input)['model_out']
+            #     .squeeze()#.squeeze(1)
+            #     .detach()
+            #     .cpu()
+            # )
             head += max_batch
 
         sdf_values = samples[:, 3]
