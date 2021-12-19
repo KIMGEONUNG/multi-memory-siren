@@ -1,6 +1,6 @@
 source common.sh
 
-xyz='xyznrgb_dense2'
+xyz='datasets'
 size_batch=120000
 
 CUDA_VISIBLE_DEVICES=0 python experiment_scripts/train_sdfc.py \
